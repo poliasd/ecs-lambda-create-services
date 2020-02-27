@@ -134,7 +134,6 @@ def create_service(service_name, task_definition, container_name, target_group_a
             'targetGroupArn': target_group_arn,
             'containerName': container_name,
             'containerPort': 80,
-            #'loadBalancerName': load_balancer_arn
         },
         ],
         desiredCount = 2,
