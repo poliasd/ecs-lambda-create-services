@@ -14,7 +14,6 @@ subnet2 = 'subnet-2'
 security_group = 'sg-123'
 vpc_id = 'vpc-123'
 instance_profile_arn = 'arn:aws:iam::11111111:instance-profile/EC2RoleECS'
-target_group_arn =''
 
 def create_cluster():
     launch_configuration_name = 'ecs-' + cluster_name + '-launch-configuration'
@@ -33,7 +32,7 @@ def create_cluster():
         ]
     )
     
-    print('--response_launch_configuration'--)
+    print('--response_launch_configuration--')
     print(response_launch_configuration)
     
     response_scaling_group = autoscaling_client.create_auto_scaling_group(
@@ -69,6 +68,8 @@ def create_load_balancer():
     
     target_group_arn = response_target_group['TargetGroups'][0]['TargetGroupArn']
     
+    print(target_group_arn)
+    
     response_load_balancer = elb_client.create_load_balancer(
         Name = load_balancer_name,
         Subnets=[
@@ -80,10 +81,9 @@ def create_load_balancer():
         Type='application',
         IpAddressType='ipv4'
     )
-    print(response_load_balancer['LoadBalancers'][0]['LoadBalancerArn'])
-
+    load_balancer_arn = response_load_balancer['LoadBalancers'][0]['LoadBalancerArn']
     response_listener = elb_client.create_listener(
-        LoadBalancerArn = response_load_balancer['LoadBalancers'][0]['LoadBalancerArn'],
+        LoadBalancerArn =  load_balancer_arn,
         Protocol = 'HTTP',
         Port = 80,
         DefaultActions = [
@@ -95,13 +95,14 @@ def create_load_balancer():
     )
     
     print(response_listener)
+    return target_group_arn
 
-def create_task_definition():
+def create_task_definition(container_name, image_name, game_name):
     response = ecs_client.register_task_definition(
         containerDefinitions=[
             {
-              "name": "game",
-              "image": "poliasd/pacman:1.0",
+              "name": container_name,
+              "image": image_name,
               "essential": True,
               "portMappings": [
                 {
@@ -110,29 +111,30 @@ def create_task_definition():
                 }
               ],
               "memory": 250,
-              "cpu": 10,
-                tags=[
-                    {
-                        'key': 'game-name',
-                        'value': 'pacman'
-                    },
-                ]
+              "cpu": 10
             }
+        ],
+        tags=[
+            {
+                'key': 'game-name',
+                'value': game_name
+            },
         ],
         family="game"
     )
     print(response)
 
-def create_service():
+def create_service(service_name, task_definition, container_name, target_group_arn):
     response = ecs_client.create_service(
         cluster = cluster_name,
-        serviceName = "game",
-        taskDefinition = "game",
+        serviceName = service_name,
+        taskDefinition = task_definition,
         loadBalancers=[
         {
             'targetGroupArn': target_group_arn,
-            'containerName': 'game',
-            'containerPort': 80
+            'containerName': container_name,
+            'containerPort': 80,
+            #'loadBalancerName': load_balancer_arn
         },
         ],
         desiredCount = 2,
@@ -146,6 +148,6 @@ def create_service():
 
 def lambda_handler(event, context):
     create_cluster()
-    create_load_balancer()
-    create_task_definition()
-    create_service()
+    target_group_arn = create_load_balancer()
+    create_task_definition('game', 'poliasd/pacman:1.0', 'pacman')
+    create_service('game', 'game', 'game', target_group_arn)
